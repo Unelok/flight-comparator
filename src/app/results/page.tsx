@@ -2,13 +2,19 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
+import { format } from "date-fns";
+import { fr } from "date-fns/locale";
 import {
   Plane,
   ArrowLeft,
+  ArrowRight,
   SlidersHorizontal,
   ArrowUpDown,
   Bell,
   CheckCircle2,
+  RotateCcw,
+  Clock,
+  CircleDot,
 } from "lucide-react";
 import { FlightOffer } from "@/types";
 import FlightCard from "@/components/FlightCard";
@@ -35,6 +41,9 @@ function ResultsContent() {
   const [outboundFlights, setOutboundFlights] = useState<FlightOffer[]>([]);
   const [returnFlights, setReturnFlights] = useState<FlightOffer[]>([]);
   const [selectedOutbound, setSelectedOutbound] = useState<FlightOffer | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<FlightOffer | null>(null);
+  /** True when SerpApi departure_token step-2 was used — selectedReturn.price is the confirmed RT total */
+  const [returnPriceIsTotal, setReturnPriceIsTotal] = useState(false);
   const [phase, setPhase] = useState<TripPhase>(isRoundTrip ? "outbound" : "complete");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -91,6 +100,7 @@ function ResultsContent() {
   async function fetchReturnFlights(retDate: string, departureToken?: string, returnTo?: string) {
     setLoading(true);
     setError("");
+    setReturnPriceIsTotal(!!departureToken);
     try {
       let url: string;
       if (departureToken) {
@@ -149,6 +159,16 @@ function ResultsContent() {
     }
   });
 
+  const handleSelectReturn = (flight: FlightOffer) => {
+    setSelectedReturn(flight);
+    setPhase("complete");
+  };
+
+  const handleBackToReturn = () => {
+    setSelectedReturn(null);
+    setPhase("return");
+  };
+
   const handleSelectOutbound = (flight: FlightOffer) => {
     setSelectedOutbound(flight);
     setPhase("return");
@@ -158,6 +178,7 @@ function ResultsContent() {
 
   const handleBackToOutbound = () => {
     setSelectedOutbound(null);
+    setSelectedReturn(null);
     setReturnFlights([]);
     setPhase("outbound");
   };
@@ -167,6 +188,16 @@ function ResultsContent() {
     : null;
   const cheapestPrice = cheapestFlight?.price;
   const cheapestCurrency = cheapestFlight?.currency ?? "EUR";
+
+  // Confirmed total for summary view
+  const totalPrice = selectedReturn
+    ? returnPriceIsTotal
+      ? selectedReturn.price
+      : (selectedOutbound?.price ?? 0) + selectedReturn.price
+    : null;
+
+  function fmtTime(ds: string) { return format(new Date(ds), "HH:mm", { locale: fr }); }
+  function fmtDate(ds: string) { return format(new Date(ds), "dd MMM yyyy", { locale: fr }); }
 
   const handleDepartureDateChange = (newDate: string) => {
     setActiveDepartureDate(newDate);
@@ -192,11 +223,9 @@ function ResultsContent() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
-                if (phase === "return") {
-                  handleBackToOutbound();
-                } else {
-                  router.push("/");
-                }
+                if (phase === "complete") handleBackToReturn();
+                else if (phase === "return") handleBackToOutbound();
+                else router.push("/");
               }}
               className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors"
             >
@@ -207,18 +236,18 @@ function ResultsContent() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-900">
-                {phase === "return"
-                  ? `${destination} → ${origins[0]}`
-                  : `${origins.join(", ")} → ${destination}`}
+                {phase === "complete"
+                  ? `${origins[0]} ⇄ ${destination}`
+                  : phase === "return"
+                    ? `${destination} → ${selectedOutbound?.origin ?? origins[0]}`
+                    : `${origins.join(", ")} → ${destination}`}
               </h1>
               <p className="text-xs text-slate-500">
-                {phase === "return" ? activeReturnDate : activeDepartureDate}
-                {isRoundTrip && phase !== "return"
-                  ? ` — ${activeReturnDate} (aller-retour)`
-                  : !isRoundTrip
-                    ? " (aller simple)"
-                    : " (retour)"}{" "}
-                · {passengers} passager{parseInt(passengers) > 1 ? "s" : ""}
+                {phase === "complete"
+                  ? `Aller-retour · ${passengers} passager${parseInt(passengers) > 1 ? "s" : ""}`
+                  : phase === "return"
+                    ? `${activeReturnDate} (retour) · ${passengers} passager${parseInt(passengers) > 1 ? "s" : ""}`
+                    : `${activeDepartureDate}${isRoundTrip ? ` — ${activeReturnDate} (aller-retour)` : " (aller simple)"} · ${passengers} passager${parseInt(passengers) > 1 ? "s" : ""}`}
               </p>
             </div>
           </div>
@@ -239,12 +268,10 @@ function ResultsContent() {
       <div className="max-w-5xl mx-auto px-4 py-8">
         {/* Round-trip step indicator */}
         {isRoundTrip && (
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex items-center gap-3 mb-6">
             <button
-              onClick={() => {
-                if (phase === "return") handleBackToOutbound();
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+              onClick={() => { if (phase !== "outbound") handleBackToOutbound(); }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                 phase === "outbound"
                   ? "bg-blue-600 text-white shadow-md"
                   : selectedOutbound
@@ -252,28 +279,175 @@ function ResultsContent() {
                     : "bg-slate-100 text-slate-400"
               }`}
             >
-              {selectedOutbound ? (
-                <CheckCircle2 className="w-4 h-4" />
-              ) : (
-                <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center text-xs">1</span>
-              )}
+              {selectedOutbound ? <CheckCircle2 className="w-4 h-4" /> : <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center text-xs">1</span>}
               <span>Aller</span>
-              {selectedOutbound && (
-                <span className="text-xs ml-1">
-                  {selectedOutbound.airlineName} · {selectedOutbound.price}€
-                </span>
-              )}
             </button>
             <div className="h-px flex-1 bg-slate-200" />
-            <div
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+            <button
+              onClick={() => { if (phase === "complete") handleBackToReturn(); }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                 phase === "return"
                   ? "bg-blue-600 text-white shadow-md"
-                  : "bg-slate-100 text-slate-400"
+                  : selectedReturn
+                    ? "bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 cursor-pointer"
+                    : "bg-slate-100 text-slate-400"
               }`}
             >
-              <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center text-xs">2</span>
+              {selectedReturn ? <CheckCircle2 className="w-4 h-4" /> : <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center text-xs">2</span>}
               <span>Retour</span>
+            </button>
+            <div className="h-px flex-1 bg-slate-200" />
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium ${
+              phase === "complete" ? "bg-blue-600 text-white shadow-md" : "bg-slate-100 text-slate-400"
+            }`}>
+              {phase === "complete" ? <CheckCircle2 className="w-4 h-4" /> : <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center text-xs">3</span>}
+              <span>Récap</span>
+            </div>
+          </div>
+        )}
+
+        {/* Booking summary — phase complete */}
+        {phase === "complete" && selectedOutbound && selectedReturn && (
+          <div className="space-y-4">
+            {/* Success banner */}
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-5 text-white flex items-center gap-4">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <div>
+                <p className="text-lg font-bold">Itinéraire sélectionné</p>
+                <p className="text-green-100 text-sm">
+                  {origins[0]} ⇄ {destination} · Aller-retour · {passengers} passager{parseInt(passengers) > 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+
+            {/* Outbound leg */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Plane className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                    Vol aller — {fmtDate(selectedOutbound.departureTime)}
+                  </span>
+                </div>
+                <button onClick={handleBackToOutbound} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                  <RotateCcw className="w-3 h-3" /> Modifier
+                </button>
+              </div>
+              <div className="px-5 py-4 flex flex-col sm:flex-row items-center gap-4">
+                <div className="flex items-center gap-3 min-w-[120px]">
+                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Plane className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">{selectedOutbound.airlineName}</p>
+                </div>
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-slate-900">{fmtTime(selectedOutbound.departureTime)}</p>
+                    <p className="text-xs text-slate-500">{selectedOutbound.origin}</p>
+                  </div>
+                  <div className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full flex items-center gap-1">
+                      <div className="h-[2px] flex-1 bg-gradient-to-r from-blue-400 to-indigo-400" />
+                      <ArrowRight className="w-3 h-3 text-indigo-400" />
+                    </div>
+                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />{selectedOutbound.duration}
+                      {selectedOutbound.stops === 0
+                        ? <span className="text-green-600 font-medium ml-1">Direct</span>
+                        : <span className="text-orange-600 flex items-center gap-1 ml-1"><CircleDot className="w-3 h-3" />{selectedOutbound.stops} escale{selectedOutbound.stops > 1 ? "s" : ""}</span>}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-slate-900">{fmtTime(selectedOutbound.arrivalTime)}</p>
+                    <p className="text-xs text-slate-500">{selectedOutbound.destination}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Return leg */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Plane className="w-4 h-4 text-indigo-600" />
+                  <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                    Vol retour — {fmtDate(selectedReturn.departureTime)}
+                  </span>
+                </div>
+                <button onClick={handleBackToReturn} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                  <RotateCcw className="w-3 h-3" /> Modifier
+                </button>
+              </div>
+              <div className="px-5 py-4 flex flex-col sm:flex-row items-center gap-4">
+                <div className="flex items-center gap-3 min-w-[120px]">
+                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Plane className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">{selectedReturn.airlineName}</p>
+                </div>
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-slate-900">{fmtTime(selectedReturn.departureTime)}</p>
+                    <p className="text-xs text-slate-500">{selectedReturn.origin}</p>
+                  </div>
+                  <div className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full flex items-center gap-1">
+                      <div className="h-[2px] flex-1 bg-gradient-to-r from-indigo-400 to-blue-400" />
+                      <ArrowRight className="w-3 h-3 text-blue-400" />
+                    </div>
+                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />{selectedReturn.duration}
+                      {selectedReturn.stops === 0
+                        ? <span className="text-green-600 font-medium ml-1">Direct</span>
+                        : <span className="text-orange-600 flex items-center gap-1 ml-1"><CircleDot className="w-3 h-3" />{selectedReturn.stops} escale{selectedReturn.stops > 1 ? "s" : ""}</span>}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-slate-900">{fmtTime(selectedReturn.arrivalTime)}</p>
+                    <p className="text-xs text-slate-500">{selectedReturn.destination}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Total price & actions */}
+            <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-5">
+                <div>
+                  <p className="text-sm text-slate-500 mb-1">Prix total aller-retour</p>
+                  <p className="text-4xl font-bold text-blue-600">
+                    {totalPrice?.toFixed(0)}
+                    <span className="text-xl ml-2 font-medium">{selectedReturn.currency}</span>
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {parseInt(passengers)} passager{parseInt(passengers) > 1 ? "s" : ""}
+                    {!returnPriceIsTotal ? " · aller + retour" : " · tarif aller-retour confirmé"}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => setAlertModal(true)}
+                    className="flex items-center justify-center gap-2 text-sm font-medium text-white
+                               bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl transition-colors shadow-sm"
+                  >
+                    <Bell className="w-4 h-4" />
+                    Créer une alerte prix
+                  </button>
+                  <button
+                    onClick={() => router.push("/")}
+                    className="flex items-center justify-center gap-2 text-sm font-medium text-slate-600
+                               hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-5 py-2.5 rounded-xl transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Nouvelle recherche
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 text-center border-t border-slate-100 pt-4">
+                Prix indicatif — vérifiez les conditions tarifaires auprès de la compagnie aérienne avant de réserver.
+              </p>
             </div>
           </div>
         )}
@@ -332,7 +506,7 @@ function ResultsContent() {
         </div>
 
         {/* Loading */}
-        {loading && (
+        {phase !== "complete" && loading && (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="relative">
               <div className="w-16 h-16 border-4 border-blue-100 rounded-full" />
@@ -350,7 +524,7 @@ function ResultsContent() {
         )}
 
         {/* Error */}
-        {error && !loading && (
+        {phase !== "complete" && error && !loading && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
             <p className="text-red-600 font-semibold mb-2">
               Erreur lors de la recherche
@@ -366,7 +540,7 @@ function ResultsContent() {
         )}
 
         {/* Results */}
-        {!loading && !error && (
+        {phase !== "complete" && !loading && !error && (
           <>
             {/* Toolbar */}
             <div className="flex items-center justify-between mb-6">
@@ -414,6 +588,13 @@ function ResultsContent() {
               </div>
             )}
 
+            {/* Instruction for round-trip return phase */}
+            {isRoundTrip && phase === "return" && currentFlights.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 text-sm text-blue-800">
+                👆 Sélectionnez votre vol retour pour finaliser l&apos;itinéraire
+              </div>
+            )}
+
             {/* Flight list */}
             {currentFlights.length === 0 ? (
               <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
@@ -439,8 +620,8 @@ function ResultsContent() {
                     flight={flight}
                     onCreateAlert={() => setAlertModal(true)}
                     multiOrigin={phase === "outbound" && origins.length > 1}
-                    selectable={isRoundTrip && phase === "outbound"}
-                    onSelect={() => handleSelectOutbound(flight)}
+                    selectable={isRoundTrip && (phase === "outbound" || phase === "return")}
+                    onSelect={() => phase === "return" ? handleSelectReturn(flight) : handleSelectOutbound(flight)}
                     selectedOutboundPrice={undefined}
                   />
                 ))}
@@ -458,8 +639,8 @@ function ResultsContent() {
         destination={destination}
         departureDate={activeDepartureDate}
         returnDate={activeReturnDate || undefined}
-        currentPrice={cheapestPrice}
-        currency={cheapestCurrency}
+        currentPrice={phase === "complete" && totalPrice ? totalPrice : cheapestPrice}
+        currency={phase === "complete" ? (selectedReturn?.currency ?? cheapestCurrency) : cheapestCurrency}
       />
     </main>
   );
