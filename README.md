@@ -1,4 +1,4 @@
-cp .env.example .env# Flight Comparator
+# Flight Comparator
 
 Compare real-time flight prices and set up price alerts with email notifications.
 
