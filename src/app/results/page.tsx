@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import {
   Plane,
   ArrowLeft,
@@ -10,7 +10,7 @@ import {
   Bell,
   CheckCircle2,
 } from "lucide-react";
-import { FlightOffer } from "@/lib/google-flights";
+import { FlightOffer } from "@/types";
 import FlightCard from "@/components/FlightCard";
 import AlertModal from "@/components/AlertModal";
 import ApiQuota from "@/components/ApiQuota";
@@ -44,9 +44,6 @@ function ResultsContent() {
   // Active dates (can be changed by DatePriceStrip)
   const [activeDepartureDate, setActiveDepartureDate] = useState(departureDate);
   const [activeReturnDate, setActiveReturnDate] = useState(returnDate);
-
-  // Ref to prevent double-fetch in React strict mode
-  const fetchingRef = useRef(false);
 
   async function fetchOutboundFlights(depDate: string) {
     setLoading(true);
@@ -119,12 +116,8 @@ function ResultsContent() {
 
   // Initial outbound fetch on mount
   useEffect(() => {
-    if (fetchingRef.current) return;
     if (origins.length > 0 && destination && activeDepartureDate) {
-      fetchingRef.current = true;
-      fetchOutboundFlights(activeDepartureDate).finally(() => {
-        fetchingRef.current = false;
-      });
+      fetchOutboundFlights(activeDepartureDate);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -137,7 +130,7 @@ function ResultsContent() {
       case "price-desc":
         return b.price - a.price;
       case "duration":
-        return a.duration.localeCompare(b.duration);
+        return a.durationMinutes - b.durationMinutes;
       case "stops":
         return a.stops - b.stops;
       default:
@@ -160,10 +153,11 @@ function ResultsContent() {
     setPhase("outbound");
   };
 
-  const cheapestPrice =
-    currentFlights.length > 0
-      ? Math.min(...currentFlights.map((f) => f.price))
-      : undefined;
+  const cheapestFlight = currentFlights.length > 0
+    ? currentFlights.reduce((min, f) => f.price < min.price ? f : min)
+    : null;
+  const cheapestPrice = cheapestFlight?.price;
+  const cheapestCurrency = cheapestFlight?.currency ?? "EUR";
 
   const handleDepartureDateChange = (newDate: string) => {
     setActiveDepartureDate(newDate);
@@ -459,6 +453,7 @@ function ResultsContent() {
         departureDate={activeDepartureDate}
         returnDate={activeReturnDate || undefined}
         currentPrice={cheapestPrice}
+        currency={cheapestCurrency}
       />
     </main>
   );

@@ -1,23 +1,6 @@
 import { getJson } from "serpapi";
-
-export interface FlightOffer {
-  id: string;
-  price: number;
-  currency: string;
-  airline: string;
-  airlineName: string;
-  departureTime: string;
-  arrivalTime: string;
-  duration: string;
-  stops: number;
-  returnDepartureTime?: string;
-  returnArrivalTime?: string;
-  returnDuration?: string;
-  returnStops?: number;
-  origin: string;
-  destination: string;
-  bookingUrl?: string;
-}
+import type { FlightOffer } from "@/types";
+export type { FlightOffer } from "@/types";
 
 interface SerpApiFlight {
   flights: Array<{
@@ -98,6 +81,7 @@ function mapFlightOffer(
       lastLeg.arrival_airport.time
     ),
     duration: formatDuration(flight.total_duration),
+    durationMinutes: flight.total_duration,
     stops: outboundSegments.length - 1,
     origin: firstLeg.departure_airport.id,
     destination: lastLeg.arrival_airport.id,

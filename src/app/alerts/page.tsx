@@ -40,6 +40,7 @@ function AlertsContent() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,13 +65,16 @@ function AlertsContent() {
   };
 
   const handleDelete = async (id: string) => {
+    setDeleteError("");
     try {
       const res = await fetch(`/api/alerts?id=${id}`, { method: "DELETE" });
       if (res.ok) {
         setAlerts((prev) => prev.filter((a) => a.id !== id));
+      } else {
+        setDeleteError("Impossible de supprimer l'alerte. Réessayez.");
       }
     } catch {
-      // silently fail
+      setDeleteError("Erreur de connexion lors de la suppression.");
     }
   };
 
@@ -129,7 +133,7 @@ function AlertsContent() {
         {/* Résultats */}
         {loading && (
           <div className="text-center py-12">
-            <div className="w-10 h-10 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <div className="w-10 h-10 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
           </div>
         )}
 
@@ -153,6 +157,11 @@ function AlertsContent() {
 
         {alerts.length > 0 && (
           <div className="space-y-4">
+            {deleteError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-600 text-sm">
+                {deleteError}
+              </div>
+            )}
             {alerts.map((alert) => (
               <div
                 key={alert.id}

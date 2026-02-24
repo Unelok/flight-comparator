@@ -52,6 +52,9 @@ export default function DatePriceStrip({
   useEffect(() => {
     if (!expanded) return;
 
+    const controller = new AbortController();
+    const { signal } = controller;
+
     const fetchPrices = async () => {
       setLoading(true);
       try {
@@ -63,7 +66,8 @@ export default function DatePriceStrip({
               departureDate: date,
               passengers,
             });
-            const res = await fetch(`/api/flights/search?${params}`);
+            const res = await fetch(`/api/flights/search?${params}`, { signal });
+            if (!res.ok) return { date, price: null };
             const data = await res.json();
             const flights = data.flights || [];
             const cheapest = flights.length > 0
@@ -76,14 +80,15 @@ export default function DatePriceStrip({
         });
 
         const results = await Promise.all(promises);
-        setDatePrices(results);
+        if (!signal.aborted) setDatePrices(results);
       } finally {
-        setLoading(false);
+        if (!signal.aborted) setLoading(false);
       }
     };
 
     fetchPrices();
-  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => controller.abort();
+  }, [expanded, origin, destination, selectedDate, passengers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cheapestDate = datePrices.reduce<DatePrice | null>((min, dp) => {
     if (dp.price === null) return min;

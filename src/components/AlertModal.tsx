@@ -11,6 +11,7 @@ interface AlertModalProps {
   departureDate: string;
   returnDate?: string;
   currentPrice?: number;
+  currency?: string;
 }
 
 export default function AlertModal({
@@ -21,6 +22,7 @@ export default function AlertModal({
   departureDate,
   returnDate,
   currentPrice,
+  currency = "EUR",
 }: AlertModalProps) {
   const [email, setEmail] = useState("");
   const [maxPrice, setMaxPrice] = useState(currentPrice ? Math.round(currentPrice * 0.9) : 200);
@@ -46,7 +48,7 @@ export default function AlertModal({
           departureDate,
           returnDate,
           maxPrice,
-          currency: "EUR",
+          currency,
         }),
       });
 
@@ -77,7 +79,7 @@ export default function AlertModal({
       />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors"
@@ -94,7 +96,7 @@ export default function AlertModal({
               Alerte créée !
             </h3>
             <p className="text-slate-500">
-              Vous recevrez un email quand le prix descendra sous {maxPrice} EUR.
+              Vous recevrez un email quand le prix descendra sous {maxPrice} {currency}.
             </p>
           </div>
         ) : (
@@ -135,7 +137,7 @@ export default function AlertModal({
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Prix maximum souhaité (EUR)
+                  Prix maximum souhaité ({currency})
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -152,7 +154,7 @@ export default function AlertModal({
                 </div>
                 {currentPrice && (
                   <p className="text-xs text-slate-500 mt-1">
-                    Prix actuel le plus bas : {currentPrice.toFixed(0)} EUR
+                    Prix actuel le plus bas : {currentPrice.toFixed(0)} {currency}
                   </p>
                 )}
               </div>

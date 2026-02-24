@@ -1,6 +1,6 @@
 "use client";
 
-import { FlightOffer } from "@/lib/google-flights";
+import { FlightOffer } from "@/types";
 import {
   Plane,
   Clock,

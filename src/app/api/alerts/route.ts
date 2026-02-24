@@ -14,6 +14,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const parsedPrice = parseFloat(maxPrice);
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      return NextResponse.json(
+        { error: "Le prix maximum doit être un nombre positif" },
+        { status: 400 }
+      );
+    }
+
     const alert = await prisma.alert.create({
       data: {
         email,
@@ -21,7 +29,7 @@ export async function POST(request: NextRequest) {
         destination: destination.toUpperCase(),
         departureDate,
         returnDate: returnDate || null,
-        maxPrice: parseFloat(maxPrice),
+        maxPrice: parsedPrice,
         currency: currency || "EUR",
       },
     });
