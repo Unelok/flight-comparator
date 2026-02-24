@@ -34,11 +34,29 @@ interface SerpApiFlight {
   booking_token?: string;
 }
 
+export interface PriceInsights {
+  lowestPrice: number;
+  priceLevel: string;
+  typicalPriceRange: [number, number];
+  priceHistory: Array<{ date: string; price: number }>;
+}
+
 interface SerpApiResponse {
   best_flights?: SerpApiFlight[];
   other_flights?: SerpApiFlight[];
   search_metadata?: { google_flights_url?: string };
+  price_insights?: {
+    lowest_price: number;
+    price_level: string;
+    typical_price_range: [number, number];
+    price_history: Array<[number, number]>;
+  };
   error?: string;
+}
+
+export interface SearchFlightsResult {
+  flights: FlightOffer[];
+  priceInsights?: PriceInsights;
 }
 
 function formatDuration(minutes: number): string {
@@ -112,7 +130,7 @@ export async function searchFlights(
   adults: number = 1,
   currencyCode: string = "EUR",
   max: number = 20
-): Promise<FlightOffer[]> {
+): Promise<SearchFlightsResult> {
   try {
     const params: Record<string, string | number> = {
       engine: "google_flights",
@@ -143,11 +161,25 @@ export async function searchFlights(
     const otherFlights = response.other_flights || [];
     const allFlights = [...bestFlights, ...otherFlights];
 
-    const offers = allFlights
+    const flights = allFlights
       .slice(0, max)
       .map((flight, index) => mapFlightOffer(flight, index, currencyCode));
 
-    return offers;
+    let priceInsights: PriceInsights | undefined;
+    if (response.price_insights) {
+      const pi = response.price_insights;
+      priceInsights = {
+        lowestPrice: pi.lowest_price,
+        priceLevel: pi.price_level,
+        typicalPriceRange: pi.typical_price_range,
+        priceHistory: (pi.price_history || []).map(([ts, price]) => ({
+          date: new Date(ts * 1000).toISOString().split("T")[0],
+          price,
+        })),
+      };
+    }
+
+    return { flights, priceInsights };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Google Flights API error:", message);

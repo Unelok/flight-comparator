@@ -1,20 +1,23 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import {
   Plane,
   ArrowLeft,
   SlidersHorizontal,
   ArrowUpDown,
   Bell,
+  CheckCircle2,
 } from "lucide-react";
 import { FlightOffer } from "@/lib/google-flights";
 import FlightCard from "@/components/FlightCard";
 import AlertModal from "@/components/AlertModal";
 import ApiQuota from "@/components/ApiQuota";
+import DatePriceStrip from "@/components/DatePriceStrip";
 
 type SortOption = "price-asc" | "price-desc" | "duration" | "stops";
+type TripPhase = "outbound" | "return" | "complete";
 
 function ResultsContent() {
   const searchParams = useSearchParams();
@@ -27,63 +30,95 @@ function ResultsContent() {
   const returnDate = searchParams.get("returnDate") || "";
   const passengers = searchParams.get("passengers") || "1";
 
-  const [flights, setFlights] = useState<FlightOffer[]>([]);
+  const isRoundTrip = !!returnDate;
+
+  const [outboundFlights, setOutboundFlights] = useState<FlightOffer[]>([]);
+  const [returnFlights, setReturnFlights] = useState<FlightOffer[]>([]);
+  const [selectedOutbound, setSelectedOutbound] = useState<FlightOffer | null>(null);
+  const [phase, setPhase] = useState<TripPhase>(isRoundTrip ? "outbound" : "complete");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("price-asc");
   const [alertModal, setAlertModal] = useState(false);
 
-  useEffect(() => {
-    const fetchFlights = async () => {
+  // Active dates (can be changed by DatePriceStrip)
+  const [activeDepartureDate, setActiveDepartureDate] = useState(departureDate);
+  const [activeReturnDate, setActiveReturnDate] = useState(returnDate);
+
+  const fetchFlightsForPhase = useCallback(
+    async (currentPhase: TripPhase, depDate: string, retDate: string) => {
       setLoading(true);
       setError("");
 
       try {
-        // Fetch flights from all origins in parallel
-        const promises = origins.map((origin) => {
+        if (currentPhase === "outbound" || currentPhase === "complete") {
+          // Fetch outbound flights (one-way)
+          const promises = origins.map((origin) => {
+            const params = new URLSearchParams({
+              origin,
+              destination,
+              departureDate: depDate,
+              passengers,
+            });
+
+            return fetch(`/api/flights/search?${params.toString()}`)
+              .then((res) => res.json())
+              .then((data) => {
+                if (data.error) return [];
+                return (data.flights || []) as FlightOffer[];
+              })
+              .catch(() => [] as FlightOffer[]);
+          });
+
+          const results = await Promise.all(promises);
+          const allFlights = results.flat();
+
+          const seen = new Set<string>();
+          const uniqueFlights = allFlights.filter((f) => {
+            const key = `${f.origin}-${f.airline}-${f.departureTime}-${f.arrivalTime}-${f.price}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+
+          setOutboundFlights(uniqueFlights);
+        }
+
+        if (currentPhase === "return") {
+          // Fetch return flights (destination → origin, one-way)
           const params = new URLSearchParams({
-            origin,
-            destination,
-            departureDate,
+            origin: destination,
+            destination: origins[0],
+            departureDate: retDate,
             passengers,
           });
-          if (returnDate) params.set("returnDate", returnDate);
 
-          return fetch(`/api/flights/search?${params.toString()}`)
-            .then((res) => res.json())
-            .then((data) => {
-              if (data.error) return [];
-              return (data.flights || []) as FlightOffer[];
-            })
-            .catch(() => [] as FlightOffer[]);
-        });
-
-        const results = await Promise.all(promises);
-        const allFlights = results.flat();
-
-        // Deduplicate by generating a unique key per flight
-        const seen = new Set<string>();
-        const uniqueFlights = allFlights.filter((f) => {
-          const key = `${f.origin}-${f.airline}-${f.departureTime}-${f.arrivalTime}-${f.price}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-
-        setFlights(uniqueFlights);
+          const res = await fetch(`/api/flights/search?${params.toString()}`);
+          const data = await res.json();
+          if (data.error) {
+            setReturnFlights([]);
+          } else {
+            setReturnFlights((data.flights || []) as FlightOffer[]);
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Erreur inattendue");
       } finally {
         setLoading(false);
       }
-    };
+    },
+    [origins, destination, passengers, originParam] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-    if (origins.length > 0 && destination && departureDate) {
-      fetchFlights();
+  useEffect(() => {
+    if (origins.length > 0 && destination && activeDepartureDate) {
+      fetchFlightsForPhase(phase, activeDepartureDate, activeReturnDate);
     }
-  }, [originParam, destination, departureDate, returnDate, passengers]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeDepartureDate, activeReturnDate, phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sortedFlights = [...flights].sort((a, b) => {
+  const currentFlights = phase === "return" ? returnFlights : outboundFlights;
+
+  const sortedFlights = [...currentFlights].sort((a, b) => {
     switch (sortBy) {
       case "price-asc":
         return a.price - b.price;
@@ -98,8 +133,35 @@ function ResultsContent() {
     }
   });
 
+  const handleSelectOutbound = (flight: FlightOffer) => {
+    setSelectedOutbound(flight);
+    setPhase("return");
+    setSortBy("price-asc");
+  };
+
+  const handleBackToOutbound = () => {
+    setSelectedOutbound(null);
+    setReturnFlights([]);
+    setPhase("outbound");
+  };
+
   const cheapestPrice =
-    flights.length > 0 ? Math.min(...flights.map((f) => f.price)) : undefined;
+    currentFlights.length > 0
+      ? Math.min(...currentFlights.map((f) => f.price))
+      : undefined;
+
+  const handleDepartureDateChange = (newDate: string) => {
+    setActiveDepartureDate(newDate);
+    setSelectedOutbound(null);
+    setReturnFlights([]);
+    if (isRoundTrip) {
+      setPhase("outbound");
+    }
+  };
+
+  const handleReturnDateChange = (newDate: string) => {
+    setActiveReturnDate(newDate);
+  };
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -108,7 +170,13 @@ function ResultsContent() {
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => router.push("/")}
+              onClick={() => {
+                if (phase === "return") {
+                  handleBackToOutbound();
+                } else {
+                  router.push("/");
+                }
+              }}
               className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-slate-600" />
@@ -118,12 +186,18 @@ function ResultsContent() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-900">
-                {origins.join(", ")} → {destination}
+                {phase === "return"
+                  ? `${destination} → ${origins[0]}`
+                  : `${origins.join(", ")} → ${destination}`}
               </h1>
               <p className="text-xs text-slate-500">
-                {departureDate}
-                {returnDate ? ` — ${returnDate}` : " (aller simple)"} ·{" "}
-                {passengers} passager{parseInt(passengers) > 1 ? "s" : ""}
+                {phase === "return" ? activeReturnDate : activeDepartureDate}
+                {isRoundTrip && phase !== "return"
+                  ? ` — ${activeReturnDate} (aller-retour)`
+                  : !isRoundTrip
+                    ? " (aller simple)"
+                    : " (retour)"}{" "}
+                · {passengers} passager{parseInt(passengers) > 1 ? "s" : ""}
               </p>
             </div>
           </div>
@@ -142,6 +216,100 @@ function ResultsContent() {
       </header>
 
       <div className="max-w-5xl mx-auto px-4 py-8">
+        {/* Round-trip step indicator */}
+        {isRoundTrip && (
+          <div className="flex items-center gap-4 mb-6">
+            <button
+              onClick={() => {
+                if (phase === "return") handleBackToOutbound();
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                phase === "outbound"
+                  ? "bg-blue-600 text-white shadow-md"
+                  : selectedOutbound
+                    ? "bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 cursor-pointer"
+                    : "bg-slate-100 text-slate-400"
+              }`}
+            >
+              {selectedOutbound ? (
+                <CheckCircle2 className="w-4 h-4" />
+              ) : (
+                <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center text-xs">1</span>
+              )}
+              <span>Aller</span>
+              {selectedOutbound && (
+                <span className="text-xs ml-1">
+                  {selectedOutbound.airlineName} · {selectedOutbound.price}€
+                </span>
+              )}
+            </button>
+            <div className="h-px flex-1 bg-slate-200" />
+            <div
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                phase === "return"
+                  ? "bg-blue-600 text-white shadow-md"
+                  : "bg-slate-100 text-slate-400"
+              }`}
+            >
+              <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center text-xs">2</span>
+              <span>Retour</span>
+            </div>
+          </div>
+        )}
+
+        {/* Selected outbound summary when viewing returns */}
+        {phase === "return" && selectedOutbound && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Plane className="w-5 h-5 text-blue-600" />
+                <div>
+                  <p className="text-sm font-semibold text-blue-900">
+                    Vol aller sélectionné : {selectedOutbound.airlineName}
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    {selectedOutbound.origin} → {selectedOutbound.destination} ·{" "}
+                    {selectedOutbound.duration} · {selectedOutbound.stops === 0 ? "Direct" : `${selectedOutbound.stops} escale(s)`}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-blue-600">{selectedOutbound.price}€</p>
+                <button
+                  onClick={handleBackToOutbound}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  Modifier
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Date Price Strips */}
+        <div className="space-y-3 mb-6">
+          {phase !== "return" && (
+            <DatePriceStrip
+              origin={origins[0]}
+              destination={destination}
+              selectedDate={activeDepartureDate}
+              passengers={passengers}
+              label="Aller"
+              onDateSelect={handleDepartureDateChange}
+            />
+          )}
+          {isRoundTrip && phase === "return" && (
+            <DatePriceStrip
+              origin={destination}
+              destination={origins[0]}
+              selectedDate={activeReturnDate}
+              passengers={passengers}
+              label="Retour"
+              onDateSelect={handleReturnDateChange}
+            />
+          )}
+        </div>
+
         {/* Loading */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-20">
@@ -150,7 +318,9 @@ function ResultsContent() {
               <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin absolute inset-0" />
             </div>
             <p className="text-slate-500 mt-6 text-lg">
-              Recherche des meilleurs tarifs...
+              {phase === "return"
+                ? "Recherche des vols retour..."
+                : "Recherche des meilleurs tarifs..."}
             </p>
             <p className="text-slate-400 text-sm mt-1">
               Cela peut prendre quelques secondes
@@ -158,7 +328,7 @@ function ResultsContent() {
           </div>
         )}
 
-        {/* Erreur */}
+        {/* Error */}
         {error && !loading && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
             <p className="text-red-600 font-semibold mb-2">
@@ -174,17 +344,18 @@ function ResultsContent() {
           </div>
         )}
 
-        {/* Résultats */}
+        {/* Results */}
         {!loading && !error && (
           <>
             {/* Toolbar */}
             <div className="flex items-center justify-between mb-6">
               <p className="text-slate-600">
                 <span className="font-bold text-slate-900">
-                  {flights.length}
+                  {currentFlights.length}
                 </span>{" "}
-                vol{flights.length !== 1 ? "s" : ""} trouvé
-                {flights.length !== 1 ? "s" : ""}
+                vol{currentFlights.length !== 1 ? "s" : ""}{" "}
+                {phase === "return" ? "retour" : ""} trouvé
+                {currentFlights.length !== 1 ? "s" : ""}
               </p>
 
               <div className="flex items-center gap-3">
@@ -205,12 +376,8 @@ function ResultsContent() {
                                text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500
                                appearance-none cursor-pointer"
                   >
-                    <option value="price-asc">
-                      Prix croissant
-                    </option>
-                    <option value="price-desc">
-                      Prix décroissant
-                    </option>
+                    <option value="price-asc">Prix croissant</option>
+                    <option value="price-desc">Prix décroissant</option>
                     <option value="duration">Durée</option>
                     <option value="stops">Escales</option>
                   </select>
@@ -219,8 +386,15 @@ function ResultsContent() {
               </div>
             </div>
 
-            {/* Liste des vols */}
-            {flights.length === 0 ? (
+            {/* Instruction for round-trip outbound phase */}
+            {isRoundTrip && phase === "outbound" && currentFlights.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-800">
+                👆 Sélectionnez un vol aller pour voir les vols retour disponibles
+              </div>
+            )}
+
+            {/* Flight list */}
+            {currentFlights.length === 0 ? (
               <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
                 <p className="text-2xl mb-2">✈️</p>
                 <p className="text-slate-600 font-semibold mb-1">
@@ -243,7 +417,14 @@ function ResultsContent() {
                     key={flight.id}
                     flight={flight}
                     onCreateAlert={() => setAlertModal(true)}
-                    multiOrigin={origins.length > 1}
+                    multiOrigin={phase === "outbound" && origins.length > 1}
+                    selectable={isRoundTrip && phase === "outbound"}
+                    onSelect={() => handleSelectOutbound(flight)}
+                    selectedOutboundPrice={
+                      phase === "return" && selectedOutbound
+                        ? selectedOutbound.price
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -252,14 +433,14 @@ function ResultsContent() {
         )}
       </div>
 
-      {/* Modal alerte */}
+      {/* Alert modal */}
       <AlertModal
         isOpen={alertModal}
         onClose={() => setAlertModal(false)}
         origin={origins.join(", ")}
         destination={destination}
-        departureDate={departureDate}
-        returnDate={returnDate || undefined}
+        departureDate={activeDepartureDate}
+        returnDate={activeReturnDate || undefined}
         currentPrice={cheapestPrice}
       />
     </main>

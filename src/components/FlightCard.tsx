@@ -14,6 +14,9 @@ interface FlightCardProps {
   flight: FlightOffer;
   onCreateAlert?: () => void;
   multiOrigin?: boolean;
+  selectable?: boolean;
+  onSelect?: () => void;
+  selectedOutboundPrice?: number;
 }
 
 function formatTime(dateString: string) {
@@ -24,9 +27,14 @@ function formatDate(dateString: string) {
   return format(new Date(dateString), "dd MMM", { locale: fr });
 }
 
-export default function FlightCard({ flight, onCreateAlert, multiOrigin }: FlightCardProps) {
+export default function FlightCard({ flight, onCreateAlert, multiOrigin, selectable, onSelect, selectedOutboundPrice }: FlightCardProps) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow p-6">
+    <div
+      className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow p-6 ${
+        selectable ? "border-blue-200 cursor-pointer hover:border-blue-400" : "border-slate-100"
+      }`}
+      onClick={selectable ? onSelect : undefined}
+    >
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Info compagnie */}
         <div className="flex items-center gap-3 min-w-[140px]">
@@ -141,9 +149,27 @@ export default function FlightCard({ flight, onCreateAlert, multiOrigin }: Fligh
               {flight.price.toFixed(0)}
               <span className="text-sm ml-1">{flight.currency}</span>
             </p>
-            <p className="text-xs text-slate-500 text-right">par personne</p>
+            {selectedOutboundPrice ? (
+              <p className="text-xs text-slate-500 text-right">
+                Total : <span className="font-semibold text-slate-700">{(flight.price + selectedOutboundPrice).toFixed(0)}€</span>
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 text-right">par personne</p>
+            )}
           </div>
-          {onCreateAlert && (
+          {selectable && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect?.();
+              }}
+              className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700
+                         px-4 py-2 rounded-xl transition-colors"
+            >
+              Sélectionner →
+            </button>
+          )}
+          {onCreateAlert && !selectable && (
             <button
               onClick={onCreateAlert}
               className="text-xs text-blue-600 hover:text-blue-800 font-medium

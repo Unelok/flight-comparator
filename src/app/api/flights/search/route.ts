@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const flights = await searchFlights(
+    const result = await searchFlights(
       origin,
       destination,
       departureDate,
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json(
-      { flights },
+      { flights: result.flights, priceInsights: result.priceInsights },
       { headers: { "X-RateLimit-Remaining": remaining.toString() } }
     );
   } catch (error) {

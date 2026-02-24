@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const flights = await searchFlights(
+        const { flights } = await searchFlights(
           alert.origin,
           alert.destination,
           alert.departureDate,
