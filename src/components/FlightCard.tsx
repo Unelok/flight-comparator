@@ -153,6 +153,8 @@ export default function FlightCard({ flight, onCreateAlert, multiOrigin, selecta
               <p className="text-xs text-slate-500 text-right">
                 Total : <span className="font-semibold text-slate-700">{(flight.price + selectedOutboundPrice).toFixed(0)}€</span>
               </p>
+            ) : selectable ? (
+              <p className="text-xs text-green-600 font-medium text-right">aller-retour</p>
             ) : (
               <p className="text-xs text-slate-500 text-right">par personne</p>
             )}

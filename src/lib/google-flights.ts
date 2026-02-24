@@ -15,6 +15,8 @@ interface SerpApiFlight {
   price: number;
   type: string;
   booking_token?: string;
+  /** Token used to fetch return legs for this outbound (round-trip step 2) */
+  departure_token?: string;
 }
 
 export interface PriceInsights {
@@ -103,6 +105,10 @@ function mapFlightOffer(
     result.returnStops = returnSegments.length - 1;
   }
 
+  if (flight.departure_token) {
+    result.departureToken = flight.departure_token;
+  }
+
   return result;
 }
 
@@ -176,6 +182,53 @@ export async function searchFlights(
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Google Flights API error:", message);
     throw new Error(message || "Erreur lors de la recherche de vols");
+  }
+}
+
+/**
+ * Step-2 of a round-trip search: fetch return-leg options for a previously
+ * selected outbound flight using the SerpApi departure_token.
+ */
+export async function searchReturnFlights(
+  departureToken: string,
+  adults: number = 1,
+  currencyCode: string = "EUR",
+  max: number = 20
+): Promise<SearchFlightsResult> {
+  try {
+    const params: Record<string, string | number> = {
+      engine: "google_flights",
+      departure_token: departureToken,
+      adults,
+      currency: currencyCode,
+      hl: "fr",
+      gl: "fr",
+      api_key: process.env.SERPAPI_API_KEY || "",
+    };
+
+    const response = (await getJson(params)) as SerpApiResponse;
+
+    if (response.error) {
+      const noResults =
+        response.error.toLowerCase().includes("hasn't returned any results") ||
+        response.error.toLowerCase().includes("no results");
+      if (noResults) return { flights: [] };
+      throw new Error(response.error);
+    }
+
+    const bestFlights = response.best_flights || [];
+    const otherFlights = response.other_flights || [];
+    const allFlights = [...bestFlights, ...otherFlights];
+
+    const flights = allFlights
+      .slice(0, max)
+      .map((flight, index) => mapFlightOffer(flight, index, currencyCode));
+
+    return { flights };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Google Flights API error (return legs):", message);
+    throw new Error(message || "Erreur lors de la recherche des vols retour");
   }
 }
 

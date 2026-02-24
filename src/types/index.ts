@@ -30,4 +30,6 @@ export interface FlightOffer {
   origin: string;
   destination: string;
   bookingUrl?: string;
+  /** SerpApi departure_token — used to fetch return-leg options for a round-trip */
+  departureToken?: string;
 }

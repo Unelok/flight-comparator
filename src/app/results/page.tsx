@@ -56,6 +56,10 @@ function ResultsContent() {
           departureDate: depDate,
           passengers,
         });
+        // For round trips, pass returnDate → SerpApi type=1 → real round-trip prices
+        if (isRoundTrip && activeReturnDate) {
+          params.set("returnDate", activeReturnDate);
+        }
         return fetch(`/api/flights/search?${params.toString()}`)
           .then((res) => res.json())
           .then((data) => {
@@ -84,21 +88,28 @@ function ResultsContent() {
     }
   }
 
-  async function fetchReturnFlights(retDate: string, returnTo?: string) {
+  async function fetchReturnFlights(retDate: string, departureToken?: string, returnTo?: string) {
     setLoading(true);
     setError("");
     try {
-      // Use the outbound flight's actual origin airport code when available,
-      // falling back to the URL param origin
-      const returnDestination = returnTo || selectedOutbound?.origin || origins[0];
-      const params = new URLSearchParams({
-        origin: destination,
-        destination: returnDestination,
-        departureDate: retDate,
-        passengers,
-      });
+      let url: string;
+      if (departureToken) {
+        // Round-trip step 2: use SerpApi departure_token for proper return leg options
+        const params = new URLSearchParams({ departureToken, passengers });
+        url = `/api/flights/search?${params.toString()}`;
+      } else {
+        // Fallback: reversed one-way search (no departure_token available)
+        const returnDestination = returnTo || origins[0];
+        const params = new URLSearchParams({
+          origin: destination,
+          destination: returnDestination,
+          departureDate: retDate,
+          passengers,
+        });
+        url = `/api/flights/search?${params.toString()}`;
+      }
 
-      const res = await fetch(`/api/flights/search?${params.toString()}`);
+      const res = await fetch(url);
       const data = await res.json();
 
       if (data.error) {
@@ -142,9 +153,7 @@ function ResultsContent() {
     setSelectedOutbound(flight);
     setPhase("return");
     setSortBy("price-asc");
-    // Use the selected flight's actual origin airport (e.g. BRU)
-    // rather than the URL param origin (e.g. PAR city code)
-    fetchReturnFlights(activeReturnDate, flight.origin);
+    fetchReturnFlights(activeReturnDate, flight.departureToken, flight.origin);
   };
 
   const handleBackToOutbound = () => {
@@ -171,7 +180,8 @@ function ResultsContent() {
 
   const handleReturnDateChange = (newDate: string) => {
     setActiveReturnDate(newDate);
-    fetchReturnFlights(newDate, selectedOutbound?.origin);
+    // departure_token is outbound-specific; changing the date falls back to standard search
+    fetchReturnFlights(newDate, undefined, selectedOutbound?.origin);
   };
 
   return (
@@ -400,7 +410,7 @@ function ResultsContent() {
             {/* Instruction for round-trip outbound phase */}
             {isRoundTrip && phase === "outbound" && currentFlights.length > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-800">
-                👆 Sélectionnez un vol aller pour voir les vols retour disponibles
+                👆 Sélectionnez un vol aller — les prix affichés sont les tarifs aller-retour complets
               </div>
             )}
 
@@ -431,11 +441,7 @@ function ResultsContent() {
                     multiOrigin={phase === "outbound" && origins.length > 1}
                     selectable={isRoundTrip && phase === "outbound"}
                     onSelect={() => handleSelectOutbound(flight)}
-                    selectedOutboundPrice={
-                      phase === "return" && selectedOutbound
-                        ? selectedOutbound.price
-                        : undefined
-                    }
+                    selectedOutboundPrice={undefined}
                   />
                 ))}
               </div>
