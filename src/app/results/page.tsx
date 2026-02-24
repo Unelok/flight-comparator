@@ -9,7 +9,7 @@ import {
   ArrowUpDown,
   Bell,
 } from "lucide-react";
-import { FlightOffer } from "@/lib/amadeus";
+import { FlightOffer } from "@/lib/google-flights";
 import FlightCard from "@/components/FlightCard";
 import AlertModal from "@/components/AlertModal";
 import ApiQuota from "@/components/ApiQuota";

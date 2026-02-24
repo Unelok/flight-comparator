@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 
-/** Monthly free-tier limits from Amadeus (test & production) */
+/** Monthly free-tier limits for SerpApi (free plan: 100 searches/month) */
 const MONTHLY_LIMITS = {
-  flights: 2000,  // Flight Offers Search
-  airports: 7000, // Airport & City Search
+  flights: 100,   // Google Flights Search
+  airports: 100,  // Airport/Location Search
 } as const;
 
 export type ApiCategory = keyof typeof MONTHLY_LIMITS;

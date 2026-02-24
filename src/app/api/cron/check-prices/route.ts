@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { searchFlights } from "@/lib/amadeus";
+import { searchFlights } from "@/lib/google-flights";
 import { consumeApiCall } from "@/lib/rate-limiter";
 import { Resend } from "resend";
 
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     for (const alert of activeAlerts) {
       try {
-        // Check rate limit before each Amadeus call
+        // Check rate limit before each Google Flights call
         const { allowed } = consumeApiCall("flights");
         if (!allowed) {
           results.push({ alertId: alert.id, status: "skipped", reason: "rate-limited" });

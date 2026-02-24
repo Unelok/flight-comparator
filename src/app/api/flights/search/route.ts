@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchFlights } from "@/lib/amadeus";
+import { searchFlights } from "@/lib/google-flights";
 import { consumeApiCall } from "@/lib/rate-limiter";
 
 export async function GET(request: NextRequest) {
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   const { allowed, remaining } = consumeApiCall("flights");
   if (!allowed) {
     return NextResponse.json(
-      { error: "Limite mensuelle de recherches de vols atteinte (2 000/mois).", flights: [] },
+      { error: "Limite mensuelle de recherches de vols atteinte (100/mois).", flights: [] },
       { status: 429, headers: { "X-RateLimit-Remaining": "0" } }
     );
   }

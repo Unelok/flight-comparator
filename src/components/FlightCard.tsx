@@ -1,6 +1,6 @@
 "use client";
 
-import { FlightOffer } from "@/lib/amadeus";
+import { FlightOffer } from "@/lib/google-flights";
 import {
   Plane,
   Clock,

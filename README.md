@@ -4,7 +4,7 @@ Compare real-time flight prices and set up price alerts with email notifications
 
 ## Features
 
-- **Real-time flight search** — powered by the Amadeus API
+- **Real-time flight search** — powered by Google Flights (via SerpApi)
 - **Price alerts** — get notified by email when prices drop below your threshold
 - **Price history** — track fare trends over time
 - **Airport autocomplete** — search airports by name or IATA code
@@ -15,7 +15,7 @@ Compare real-time flight prices and set up price alerts with email notifications
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS 4
 - **Database**: SQLite via Prisma ORM
-- **APIs**: Amadeus (flights), Resend (email)
+- **APIs**: Google Flights via SerpApi (flights), Resend (email)
 - **Charts**: Recharts
 
 ## Getting Started
@@ -23,7 +23,7 @@ Compare real-time flight prices and set up price alerts with email notifications
 ### Prerequisites
 
 - Node.js 20+
-- An [Amadeus developer account](https://developers.amadeus.com/) (API key)
+- A [SerpApi account](https://serpapi.com/) (API key for Google Flights)
 - A [Resend account](https://resend.com/) (for email alerts)
 
 ### Installation
@@ -55,7 +55,7 @@ src/
 │       ├── flights/search/   # Flight search endpoint
 │       └── cron/check-prices # Cron job for price monitoring
 ├── components/               # React components
-├── lib/                      # Amadeus client, Prisma client
+├── lib/                      # Google Flights client, Prisma client
 └── types/                    # Shared TypeScript types
 ```
 

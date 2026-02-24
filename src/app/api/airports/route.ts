@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchAirports } from "@/lib/amadeus";
+import { searchAirports } from "@/lib/google-flights";
 import { consumeApiCall } from "@/lib/rate-limiter";
 
 // In-memory cache: keyword → { airports, timestamp }
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const { allowed, remaining } = consumeApiCall("airports");
   if (!allowed) {
     return NextResponse.json(
-      { error: "Limite mensuelle d'appels API aéroports atteinte (7 000/mois)", airports: [] },
+      { error: "Limite mensuelle d'appels API aéroports atteinte (100/mois)", airports: [] },
       { status: 429, headers: { "X-RateLimit-Remaining": "0" } }
     );
   }
