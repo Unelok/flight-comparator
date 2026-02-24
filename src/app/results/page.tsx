@@ -87,13 +87,16 @@ function ResultsContent() {
     }
   }
 
-  async function fetchReturnFlights(retDate: string) {
+  async function fetchReturnFlights(retDate: string, returnTo?: string) {
     setLoading(true);
     setError("");
     try {
+      // Use the outbound flight's actual origin airport code when available,
+      // falling back to the URL param origin
+      const returnDestination = returnTo || selectedOutbound?.origin || origins[0];
       const params = new URLSearchParams({
         origin: destination,
-        destination: origins[0],
+        destination: returnDestination,
         departureDate: retDate,
         passengers,
       });
@@ -146,8 +149,9 @@ function ResultsContent() {
     setSelectedOutbound(flight);
     setPhase("return");
     setSortBy("price-asc");
-    // Directly fetch return flights instead of relying on useEffect
-    fetchReturnFlights(activeReturnDate);
+    // Use the selected flight's actual origin airport (e.g. BRU)
+    // rather than the URL param origin (e.g. PAR city code)
+    fetchReturnFlights(activeReturnDate, flight.origin);
   };
 
   const handleBackToOutbound = () => {
@@ -173,7 +177,7 @@ function ResultsContent() {
 
   const handleReturnDateChange = (newDate: string) => {
     setActiveReturnDate(newDate);
-    fetchReturnFlights(newDate);
+    fetchReturnFlights(newDate, selectedOutbound?.origin);
   };
 
   return (
@@ -311,10 +315,10 @@ function ResultsContent() {
               onDateSelect={handleDepartureDateChange}
             />
           )}
-          {isRoundTrip && phase === "return" && (
+          {isRoundTrip && phase === "return" && selectedOutbound && (
             <DatePriceStrip
               origin={destination}
-              destination={origins[0]}
+              destination={selectedOutbound.origin}
               selectedDate={activeReturnDate}
               passengers={passengers}
               label="Retour"

@@ -153,7 +153,15 @@ export async function searchFlights(
 
     const response = (await getJson(params)) as SerpApiResponse;
 
+    // "Google Flights hasn't returned any results" is not a real error,
+    // it just means there are no flights for this route/date.
     if (response.error) {
+      const noResults =
+        response.error.toLowerCase().includes("hasn't returned any results") ||
+        response.error.toLowerCase().includes("no results");
+      if (noResults) {
+        return { flights: [], priceInsights: undefined };
+      }
       throw new Error(response.error);
     }
 

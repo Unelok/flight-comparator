@@ -45,7 +45,7 @@ export default function DatePriceStrip({
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  const dates = Array.from({ length: 11 }, (_, i) => addDays(selectedDate, i - 5));
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(selectedDate, i - 3));
   const today = new Date().toISOString().split("T")[0];
   const validDates = dates.filter((d) => d >= today);
 
@@ -101,7 +101,7 @@ export default function DatePriceStrip({
       >
         <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
           <CalendarDays className="w-4 h-4 text-blue-600" />
-          {label} — Dates flexibles (±5 jours)
+          {label} — Dates flexibles (±3 jours)
         </div>
         <div className="flex items-center gap-2">
           {cheapestDate && cheapestDate.date !== selectedDate && cheapestDate.price !== null && selectedDatePrice?.price !== null && (
