@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 
-/** Monthly free-tier limits for SerpApi (free plan: 100 searches/month) */
+/** Monthly limits for SerpApi (250 searches/month shared pool) */
 const MONTHLY_LIMITS = {
-  flights: 100,   // Google Flights Search
-  airports: 100,  // Airport/Location Search
+  flights: 250,   // Google Flights Search
+  airports: 250,  // Airport/Location Search
 } as const;
 
 export type ApiCategory = keyof typeof MONTHLY_LIMITS;
