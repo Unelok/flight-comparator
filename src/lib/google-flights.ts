@@ -44,6 +44,21 @@ export interface SearchFlightsResult {
   priceInsights?: PriceInsights;
 }
 
+/** Extract a human-readable message from anything thrown (Error, plain object, string…) */
+function extractError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string" && error.length > 0) return error;
+  if (typeof error === "object" && error !== null) {
+    const obj = error as Record<string, unknown>;
+    if (typeof obj.message === "string" && obj.message) return obj.message;
+    if (typeof obj.error === "string" && obj.error) return obj.error;
+    if (typeof obj.statusMessage === "string" && obj.statusMessage)
+      return obj.statusMessage;
+    try { return JSON.stringify(obj); } catch { /* ignore */ }
+  }
+  return "Erreur inconnue";
+}
+
 function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -179,7 +194,7 @@ export async function searchFlights(
 
     return { flights, priceInsights };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = extractError(error);
     console.error("Google Flights API error:", message);
     throw new Error(message || "Erreur lors de la recherche de vols");
   }
@@ -226,7 +241,7 @@ export async function searchReturnFlights(
 
     return { flights };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = extractError(error);
     console.error("Google Flights API error (return legs):", message);
     throw new Error(message || "Erreur lors de la recherche des vols retour");
   }

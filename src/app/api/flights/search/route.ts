@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   const { allowed, remaining } = consumeApiCall("flights");
   if (!allowed) {
     return NextResponse.json(
-      { error: "Limite mensuelle de recherches de vols atteinte (100/mois).", flights: [] },
+      { error: "Limite mensuelle de recherches de vols atteinte (250/mois).", flights: [] },
       { status: 429, headers: { "X-RateLimit-Remaining": "0" } }
     );
   }
