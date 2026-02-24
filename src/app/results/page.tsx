@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import {
   Plane,
   ArrowLeft,
@@ -45,76 +45,85 @@ function ResultsContent() {
   const [activeDepartureDate, setActiveDepartureDate] = useState(departureDate);
   const [activeReturnDate, setActiveReturnDate] = useState(returnDate);
 
-  const fetchFlightsForPhase = useCallback(
-    async (currentPhase: TripPhase, depDate: string, retDate: string) => {
-      setLoading(true);
-      setError("");
+  // Ref to prevent double-fetch in React strict mode
+  const fetchingRef = useRef(false);
 
-      try {
-        if (currentPhase === "outbound" || currentPhase === "complete") {
-          // Fetch outbound flights (one-way)
-          const promises = origins.map((origin) => {
-            const params = new URLSearchParams({
-              origin,
-              destination,
-              departureDate: depDate,
-              passengers,
-            });
+  async function fetchOutboundFlights(depDate: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const promises = origins.map((origin) => {
+        const params = new URLSearchParams({
+          origin,
+          destination,
+          departureDate: depDate,
+          passengers,
+        });
+        return fetch(`/api/flights/search?${params.toString()}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.error) return [];
+            return (data.flights || []) as FlightOffer[];
+          })
+          .catch(() => [] as FlightOffer[]);
+      });
 
-            return fetch(`/api/flights/search?${params.toString()}`)
-              .then((res) => res.json())
-              .then((data) => {
-                if (data.error) return [];
-                return (data.flights || []) as FlightOffer[];
-              })
-              .catch(() => [] as FlightOffer[]);
-          });
+      const results = await Promise.all(promises);
+      const allFlights = results.flat();
 
-          const results = await Promise.all(promises);
-          const allFlights = results.flat();
+      const seen = new Set<string>();
+      const uniqueFlights = allFlights.filter((f) => {
+        const key = `${f.origin}-${f.airline}-${f.departureTime}-${f.arrivalTime}-${f.price}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
 
-          const seen = new Set<string>();
-          const uniqueFlights = allFlights.filter((f) => {
-            const key = `${f.origin}-${f.airline}-${f.departureTime}-${f.arrivalTime}-${f.price}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-
-          setOutboundFlights(uniqueFlights);
-        }
-
-        if (currentPhase === "return") {
-          // Fetch return flights (destination → origin, one-way)
-          const params = new URLSearchParams({
-            origin: destination,
-            destination: origins[0],
-            departureDate: retDate,
-            passengers,
-          });
-
-          const res = await fetch(`/api/flights/search?${params.toString()}`);
-          const data = await res.json();
-          if (data.error) {
-            setReturnFlights([]);
-          } else {
-            setReturnFlights((data.flights || []) as FlightOffer[]);
-          }
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Erreur inattendue");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [origins, destination, passengers, originParam] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  useEffect(() => {
-    if (origins.length > 0 && destination && activeDepartureDate) {
-      fetchFlightsForPhase(phase, activeDepartureDate, activeReturnDate);
+      setOutboundFlights(uniqueFlights);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inattendue");
+    } finally {
+      setLoading(false);
     }
-  }, [activeDepartureDate, activeReturnDate, phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
+
+  async function fetchReturnFlights(retDate: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({
+        origin: destination,
+        destination: origins[0],
+        departureDate: retDate,
+        passengers,
+      });
+
+      const res = await fetch(`/api/flights/search?${params.toString()}`);
+      const data = await res.json();
+
+      if (data.error) {
+        setError(data.error);
+        setReturnFlights([]);
+      } else {
+        setReturnFlights((data.flights || []) as FlightOffer[]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inattendue");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Initial outbound fetch on mount
+  useEffect(() => {
+    if (fetchingRef.current) return;
+    if (origins.length > 0 && destination && activeDepartureDate) {
+      fetchingRef.current = true;
+      fetchOutboundFlights(activeDepartureDate).finally(() => {
+        fetchingRef.current = false;
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentFlights = phase === "return" ? returnFlights : outboundFlights;
 
@@ -137,6 +146,8 @@ function ResultsContent() {
     setSelectedOutbound(flight);
     setPhase("return");
     setSortBy("price-asc");
+    // Directly fetch return flights instead of relying on useEffect
+    fetchReturnFlights(activeReturnDate);
   };
 
   const handleBackToOutbound = () => {
@@ -157,10 +168,12 @@ function ResultsContent() {
     if (isRoundTrip) {
       setPhase("outbound");
     }
+    fetchOutboundFlights(newDate);
   };
 
   const handleReturnDateChange = (newDate: string) => {
     setActiveReturnDate(newDate);
+    fetchReturnFlights(newDate);
   };
 
   return (
