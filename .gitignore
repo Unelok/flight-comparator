@@ -43,6 +43,9 @@ src/generated/
 # API usage counter
 .api-usage.json
 
+# VS Code workspace files
+*.code-workspace
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
