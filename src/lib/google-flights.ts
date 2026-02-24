@@ -155,53 +155,36 @@ export async function searchFlights(
   }
 }
 
-// Airport search using SerpApi Google Flights autocomplete
-export async function searchAirports(keyword: string) {
-  try {
-    // SerpApi doesn't have a dedicated airport search endpoint,
-    // so we use the Google Flights autocomplete via a simple fetch
-    const apiKey = process.env.SERPAPI_API_KEY || "";
-    const url = `https://serpapi.com/search.json?engine=google_flights&type=2&outbound_date=2026-12-01&departure_id=${encodeURIComponent(keyword.toUpperCase())}&arrival_id=CDG&api_key=${apiKey}`;
+// Airport search using local dataset (no API calls consumed)
+import airportData from "@/data/airports.json";
 
-    // Alternative: use a static list or a free airport API
-    // For now, we use a lightweight approach with the airports API
-    const response = await fetch(
-      `https://serpapi.com/locations.json?q=${encodeURIComponent(keyword)}&limit=10`
-    );
+interface AirportEntry {
+  iata: string;
+  name: string;
+  city: string;
+  country: string;
+}
 
-    if (!response.ok) {
-      throw new Error(`Airport search failed: ${response.statusText}`);
-    }
+const airportDb = (airportData as AirportEntry[]).filter(
+  (a) => a.iata && a.iata !== "\\N"
+);
 
-    const data = (await response.json()) as Array<{
-      id: string;
-      name: string;
-      google_id?: number;
-      gps?: [number, number];
-      country_code?: string;
-    }>;
+export function searchAirports(keyword: string) {
+  const q = keyword.toLowerCase().trim();
+  if (q.length < 2) return [];
 
-    // Filter to airport-like results and map to our format
-    return data
-      .filter(
-        (loc) =>
-          loc.name &&
-          (loc.name.toLowerCase().includes("airport") ||
-            loc.name.toLowerCase().includes("aéroport") ||
-            loc.id?.length === 3)
-      )
-      .map((loc) => {
-        const parts = loc.name.split(",").map((p) => p.trim());
-        return {
-          code: loc.id?.length === 3 ? loc.id.toUpperCase() : loc.id || "",
-          name: parts[0] || loc.name,
-          city: parts[1] || parts[0] || loc.name,
-          country: parts[parts.length - 1] || loc.country_code || "",
-        };
-      });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("Airport search error:", message);
-    return [];
-  }
+  return airportDb
+    .filter(
+      (a) =>
+        a.iata.toLowerCase().includes(q) ||
+        a.name.toLowerCase().includes(q) ||
+        a.city.toLowerCase().includes(q)
+    )
+    .slice(0, 10)
+    .map((a) => ({
+      code: a.iata,
+      name: a.name,
+      city: a.city,
+      country: a.country,
+    }));
 }
