@@ -92,7 +92,13 @@ export default function FlightCard({ flight, onCreateAlert, multiOrigin, selecta
             <p className="text-xl font-bold text-slate-900">
               {formatTime(flight.arrivalTime)}
             </p>
-            <p className="text-xs text-slate-500">{flight.destination}</p>
+            {multiOrigin ? (
+              <span className="inline-block text-xs font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200">
+                {flight.destination}
+              </span>
+            ) : (
+              <p className="text-xs text-slate-500">{flight.destination}</p>
+            )}
             <p className="text-xs text-slate-400">
               {formatDate(flight.arrivalTime)}
             </p>

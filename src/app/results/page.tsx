@@ -44,7 +44,7 @@ function ResultsContent() {
   const [selectedReturn, setSelectedReturn] = useState<FlightOffer | null>(null);
   /** True when SerpApi departure_token step-2 was used — selectedReturn.price is the confirmed RT total */
   const [returnPriceIsTotal, setReturnPriceIsTotal] = useState(false);
-  const [phase, setPhase] = useState<TripPhase>(isRoundTrip ? "outbound" : "complete");
+  const [phase, setPhase] = useState<TripPhase>("outbound");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("price-asc");
@@ -97,37 +97,68 @@ function ResultsContent() {
     }
   }
 
-  async function fetchReturnFlights(retDate: string, departureToken?: string, returnTo?: string) {
+  async function fetchReturnFlights(retDate: string, departureToken?: string) {
     setLoading(true);
     setError("");
-    setReturnPriceIsTotal(!!departureToken);
+
     try {
-      let url: string;
+      let flights: FlightOffer[] = [];
+
+      // 1. Try step-2 with departure_token (confirmed RT prices)
       if (departureToken) {
-        // Round-trip step 2: use SerpApi departure_token for proper return leg options
         const params = new URLSearchParams({ departureToken, passengers });
-        url = `/api/flights/search?${params.toString()}`;
-      } else {
-        // Fallback: reversed one-way search (no departure_token available)
-        const returnDestination = returnTo || origins[0];
+        const res = await fetch(`/api/flights/search?${params.toString()}`);
+        const data = await res.json();
+
+        if (!data.error && (data.flights || []).length > 0) {
+          setReturnPriceIsTotal(true);
+          flights = data.flights as FlightOffer[];
+          setReturnFlights(flights);
+          setLoading(false);
+          return;
+        }
+        // Step-2 failed — fall through to multi-airport fallback
+        console.warn("[fetchReturnFlights] step-2 failed, falling back. Error:", data.error);
+      }
+
+      // 2. Fallback: search returns from destination to ALL departure airports
+      setReturnPriceIsTotal(false);
+      const returnTargets = origins.length > 0 ? origins : [destination];
+      const promises = returnTargets.map((target) => {
         const params = new URLSearchParams({
           origin: destination,
-          destination: returnDestination,
+          destination: target,
           departureDate: retDate,
           passengers,
         });
-        url = `/api/flights/search?${params.toString()}`;
+        return fetch(`/api/flights/search?${params.toString()}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.error) return [];
+            return (data.flights || []) as FlightOffer[];
+          })
+          .catch(() => [] as FlightOffer[]);
+      });
+
+      const results = await Promise.all(promises);
+      flights = results.flat();
+
+      // Deduplicate and re-index IDs (multiple APIs may produce duplicate offer-N ids)
+      const seen = new Set<string>();
+      flights = flights
+        .filter((f) => {
+          const key = `${f.origin}-${f.destination}-${f.airline}-${f.departureTime}-${f.arrivalTime}-${f.price}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map((f, i) => ({ ...f, id: `return-${i}` }));
+
+      if (flights.length === 0 && results.every((r) => r.length === 0)) {
+        setError("Aucun vol retour trouvé");
       }
 
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (data.error) {
-        setError(data.error);
-        setReturnFlights([]);
-      } else {
-        setReturnFlights((data.flights || []) as FlightOffer[]);
-      }
+      setReturnFlights(flights);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inattendue");
     } finally {
@@ -173,7 +204,7 @@ function ResultsContent() {
     setSelectedOutbound(flight);
     setPhase("return");
     setSortBy("price-asc");
-    fetchReturnFlights(activeReturnDate, flight.departureToken, flight.origin);
+    fetchReturnFlights(activeReturnDate, flight.departureToken);
   };
 
   const handleBackToOutbound = () => {
@@ -212,7 +243,7 @@ function ResultsContent() {
   const handleReturnDateChange = (newDate: string) => {
     setActiveReturnDate(newDate);
     // departure_token is outbound-specific; changing the date falls back to standard search
-    fetchReturnFlights(newDate, undefined, selectedOutbound?.origin);
+    fetchReturnFlights(newDate);
   };
 
   return (
@@ -236,10 +267,12 @@ function ResultsContent() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-900">
-                {phase === "complete"
+                {phase === "complete" && selectedOutbound && selectedReturn
+                  ? `${selectedOutbound.origin} → ${destination} → ${selectedReturn.destination}`
+                  : phase === "complete"
                   ? `${origins[0]} ⇄ ${destination}`
                   : phase === "return"
-                    ? `${destination} → ${selectedOutbound?.origin ?? origins[0]}`
+                    ? `${destination} → ${origins.length > 1 ? origins.join(", ") : (selectedOutbound?.origin ?? origins[0])}`
                     : `${origins.join(", ")} → ${destination}`}
               </h1>
               <p className="text-xs text-slate-500">
@@ -317,7 +350,12 @@ function ResultsContent() {
               <div>
                 <p className="text-lg font-bold">Itinéraire sélectionné</p>
                 <p className="text-green-100 text-sm">
-                  {origins[0]} ⇄ {destination} · Aller-retour · {passengers} passager{parseInt(passengers) > 1 ? "s" : ""}
+                  {selectedOutbound.origin} → {destination} → {selectedReturn.destination} · Aller-retour · {passengers} passager{parseInt(passengers) > 1 ? "s" : ""}
+                  {selectedOutbound.origin !== selectedReturn.destination && (
+                    <span className="block text-xs text-green-200 mt-0.5">
+                      ⚡ Retour vers un aéroport différent du départ
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -496,7 +534,7 @@ function ResultsContent() {
           {isRoundTrip && phase === "return" && selectedOutbound && (
             <DatePriceStrip
               origin={destination}
-              destination={selectedOutbound.origin}
+              destination={origins[0]}
               selectedDate={activeReturnDate}
               passengers={passengers}
               label="Retour"
@@ -592,6 +630,11 @@ function ResultsContent() {
             {isRoundTrip && phase === "return" && currentFlights.length > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 text-sm text-blue-800">
                 👆 Sélectionnez votre vol retour pour finaliser l&apos;itinéraire
+                {origins.length > 1 && (
+                  <span className="block mt-1 text-xs text-blue-600">
+                    💡 Les vols retour vers tous vos aéroports de départ sont affichés — choisissez le moins cher !
+                  </span>
+                )}
               </div>
             )}
 
@@ -619,7 +662,7 @@ function ResultsContent() {
                     key={flight.id}
                     flight={flight}
                     onCreateAlert={() => setAlertModal(true)}
-                    multiOrigin={phase === "outbound" && origins.length > 1}
+                    multiOrigin={(phase === "outbound" || phase === "return") && origins.length > 1}
                     selectable={isRoundTrip && (phase === "outbound" || phase === "return")}
                     onSelect={() => phase === "return" ? handleSelectReturn(flight) : handleSelectOutbound(flight)}
                     selectedOutboundPrice={undefined}

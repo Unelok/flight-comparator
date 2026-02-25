@@ -47,7 +47,18 @@ export interface SearchFlightsResult {
 /** Extract a human-readable message from anything thrown (Error, plain object, string…) */
 function extractError(error: unknown): string {
   if (error instanceof Error) return error.message;
-  if (typeof error === "string" && error.length > 0) return error;
+  if (typeof error === "string" && error.length > 0) {
+    // serpapi rejects non-200 responses with the raw body string — try to parse it
+    try {
+      const parsed: unknown = JSON.parse(error);
+      if (parsed && typeof parsed === "object") {
+        const obj = parsed as Record<string, unknown>;
+        if (typeof obj.error === "string" && obj.error) return obj.error;
+        if (typeof obj.message === "string" && obj.message) return obj.message;
+      }
+    } catch { /* not JSON — return as-is */ }
+    return error;
+  }
   if (typeof error === "object" && error !== null) {
     const obj = error as Record<string, unknown>;
     if (typeof obj.message === "string" && obj.message) return obj.message;
@@ -122,6 +133,8 @@ function mapFlightOffer(
 
   if (flight.departure_token) {
     result.departureToken = flight.departure_token;
+  } else if (process.env.NODE_ENV === "development") {
+    console.log("[mapFlightOffer] no departure_token on flight", index, "keys:", Object.keys(flight));
   }
 
   return result;
@@ -173,6 +186,11 @@ export async function searchFlights(
     const bestFlights = response.best_flights || [];
     const otherFlights = response.other_flights || [];
     const allFlights = [...bestFlights, ...otherFlights];
+
+    if (process.env.NODE_ENV === "development") {
+      const withToken = allFlights.filter((f) => f.departure_token).length;
+      console.log(`[searchFlights] best=${bestFlights.length} other=${otherFlights.length} withDepartureToken=${withToken}/${allFlights.length} returnDate=${returnDate || "none"}`);
+    }
 
     const flights = allFlights
       .slice(0, max)
@@ -235,6 +253,10 @@ export async function searchReturnFlights(
     const otherFlights = response.other_flights || [];
     const allFlights = [...bestFlights, ...otherFlights];
 
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[searchReturnFlights] best=${bestFlights.length} other=${otherFlights.length} keys=${Object.keys(response).join(", ")}`);
+    }
+
     const flights = allFlights
       .slice(0, max)
       .map((flight, index) => mapFlightOffer(flight, index, currencyCode));
@@ -242,7 +264,8 @@ export async function searchReturnFlights(
     return { flights };
   } catch (error: unknown) {
     const message = extractError(error);
-    console.error("Google Flights API error (return legs):", message);
+    console.error("[searchReturnFlights] error:", message, "raw:", JSON.stringify(error));
+    throw new Error(message || "Erreur lors de la recherche des vols retour");
     throw new Error(message || "Erreur lors de la recherche des vols retour");
   }
 }
