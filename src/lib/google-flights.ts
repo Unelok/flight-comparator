@@ -67,7 +67,7 @@ function extractError(error: unknown): string {
       return obj.statusMessage;
     try { return JSON.stringify(obj); } catch { /* ignore */ }
   }
-  return "Erreur inconnue";
+  return "Erreur inattendue lors de la recherche de vols. Veuillez réessayer plus tard.";
 }
 
 function formatDuration(minutes: number): string {
@@ -265,7 +265,6 @@ export async function searchReturnFlights(
   } catch (error: unknown) {
     const message = extractError(error);
     console.error("[searchReturnFlights] error:", message, "raw:", JSON.stringify(error));
-    throw new Error(message || "Erreur lors de la recherche des vols retour");
     throw new Error(message || "Erreur lors de la recherche des vols retour");
   }
 }

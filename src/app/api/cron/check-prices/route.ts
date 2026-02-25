@@ -3,16 +3,31 @@ import prisma from "@/lib/prisma";
 import { searchFlights } from "@/lib/google-flights";
 import { consumeApiCall } from "@/lib/rate-limiter";
 import { Resend } from "resend";
+import crypto from "crypto";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(request: NextRequest) {
   // Vérification du secret pour sécuriser l'endpoint
-  const authHeader = request.headers.get("authorization");
-  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const authHeader = request.headers.get("authorization") ?? "";
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
+  const expectedHeader = `Bearer ${cronSecret}`;
+  let authorized = false;
+
+  if (authHeader.length === expectedHeader.length) {
+    const authBuffer = Buffer.from(authHeader);
+    const expectedBuffer = Buffer.from(expectedHeader);
+    authorized = crypto.timingSafeEqual(authBuffer, expectedBuffer);
+  }
+
+  if (!authorized) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
   try {
     const activeAlerts = await prisma.alert.findMany({
       where: { active: true },

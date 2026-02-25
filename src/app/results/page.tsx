@@ -166,12 +166,12 @@ function ResultsContent() {
     }
   }
 
-  // Initial outbound fetch on mount
+  // Initial outbound fetch and refetch when search parameters change
   useEffect(() => {
     if (origins.length > 0 && destination && activeDepartureDate) {
       fetchOutboundFlights(activeDepartureDate);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [origins, destination, activeDepartureDate]);
 
   const currentFlights = phase === "return" ? returnFlights : outboundFlights;
 
@@ -622,7 +622,7 @@ function ResultsContent() {
             {/* Instruction for round-trip outbound phase */}
             {isRoundTrip && phase === "outbound" && currentFlights.length > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-800">
-                👆 Sélectionnez un vol aller — les prix affichés sont les tarifs aller-retour complets
+                👆 Sélectionnez un vol aller — les prix affichés correspondent à ce trajet, le prix total aller-retour sera confirmé après la sélection du retour
               </div>
             )}
 
@@ -665,7 +665,7 @@ function ResultsContent() {
                     multiOrigin={(phase === "outbound" || phase === "return") && origins.length > 1}
                     selectable={isRoundTrip && (phase === "outbound" || phase === "return")}
                     onSelect={() => phase === "return" ? handleSelectReturn(flight) : handleSelectOutbound(flight)}
-                    selectedOutboundPrice={undefined}
+
                   />
                 ))}
               </div>
